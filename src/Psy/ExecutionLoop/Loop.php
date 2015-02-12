@@ -37,62 +37,7 @@ class Loop
      */
     public function run(Shell $shell)
     {
-        $loop = function ($__psysh__) {
-            // Load user-defined includes
-            set_error_handler(array($__psysh__, 'handleError'));
-            try {
-                foreach ($__psysh__->getIncludes() as $__psysh_include__) {
-                    include $__psysh_include__;
-                }
-            } catch (\Exception $_e) {
-                $__psysh__->writeException($_e);
-            }
-            restore_error_handler();
-            unset($__psysh_include__);
-
-            extract($__psysh__->getScopeVariables());
-
-            do {
-                $__psysh__->beforeLoop();
-                $__psysh__->setScopeVariables(get_defined_vars());
-
-                try {
-                    // read a line, see if we should eval
-                    $__psysh__->getInput();
-
-                    // evaluate the current code buffer
-                    ob_start();
-
-                    set_error_handler(array($__psysh__, 'handleError'));
-                    $_ = eval($__psysh__->flushCode());
-                    restore_error_handler();
-
-                    $__psysh_out__ = ob_get_contents();
-                    ob_end_clean();
-
-                    $__psysh__->writeStdout($__psysh_out__);
-                    $__psysh__->writeReturnValue($_);
-                } catch (BreakException $_e) {
-                    restore_error_handler();
-                    if (ob_get_level() > 0) {
-                        ob_end_clean();
-                    }
-                    $__psysh__->writeException($_e);
-
-                    return;
-                } catch (\Exception $_e) {
-                    restore_error_handler();
-                    if (ob_get_level() > 0) {
-                        ob_end_clean();
-                    }
-                    $__psysh__->writeException($_e);
-                }
-
-                // a bit of housekeeping
-                unset($__psysh_out__);
-                $__psysh__->afterLoop();
-            } while (true);
-        };
+        $loop = __loop();
 
         // bind the closure to $this from the shell scope variables...
         if (self::bindLoop()) {
@@ -105,8 +50,6 @@ class Loop
 
             if (is_object($that)) {
                 $loop = $loop->bindTo($that, get_class($that));
-            } else {
-                $loop = $loop->bindTo(null);
             }
         }
 
@@ -150,4 +93,81 @@ class Loop
 
         return version_compare(PHP_VERSION, '5.4', '>=');
     }
+}
+
+/**
+ * Don't use this function.
+ *
+ * It's used internally by the ExecutionLoop to generate a Closure without
+ * object or static scope. We need this because PHP is really bad at moving
+ * Closures between scopes, and once the execution loop Closure's scope is
+ * tainted by an object or static scope, it infects all closures defined inside
+ * the REPL or inside files included into the REPL. It's like a crappy Closure
+ * scope implementation virus or something.
+ *
+ * See https://github.com/bobthecow/psysh/issues/106
+ *
+ * So please, don't use this function for anything. It wouldn't even exist if
+ * we could help it :-/
+ *
+ * @return Closure
+ */
+function __loop()
+{
+    return function ($__psysh__) {
+        // Load user-defined includes
+        set_error_handler(array($__psysh__, 'handleError'));
+        try {
+            foreach ($__psysh__->getIncludes() as $__psysh_include__) {
+                include $__psysh_include__;
+            }
+        } catch (\Exception $_e) {
+            $__psysh__->writeException($_e);
+        }
+        restore_error_handler();
+        unset($__psysh_include__);
+
+        extract($__psysh__->getScopeVariables());
+
+        do {
+            $__psysh__->beforeLoop();
+            $__psysh__->setScopeVariables(get_defined_vars());
+
+            try {
+                // read a line, see if we should eval
+                $__psysh__->getInput();
+
+                // evaluate the current code buffer
+                ob_start();
+
+                set_error_handler(array($__psysh__, 'handleError'));
+                $_ = eval($__psysh__->flushCode());
+                restore_error_handler();
+
+                $__psysh_out__ = ob_get_contents();
+                ob_end_clean();
+
+                $__psysh__->writeStdout($__psysh_out__);
+                $__psysh__->writeReturnValue($_);
+            } catch (BreakException $_e) {
+                restore_error_handler();
+                if (ob_get_level() > 0) {
+                    ob_end_clean();
+                }
+                $__psysh__->writeException($_e);
+
+                return;
+            } catch (\Exception $_e) {
+                restore_error_handler();
+                if (ob_get_level() > 0) {
+                    ob_end_clean();
+                }
+                $__psysh__->writeException($_e);
+            }
+
+            // a bit of housekeeping
+            unset($__psysh_out__);
+            $__psysh__->afterLoop();
+        } while (true);
+    };
 }
